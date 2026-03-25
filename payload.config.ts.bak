@@ -1,16 +1,16 @@
-import { CloudflareContext, getCloudflareContext } from '@opennextjs/cloudflare'
-import { sqliteD1Adapter } from '@payloadcms/db-d1-sqlite'
-import { lexicalEditor } from '@payloadcms/richtext-lexical'
-import { r2Storage } from '@payloadcms/storage-r2'
 import fs from 'fs'
 import path from 'path'
+import { sqliteD1Adapter } from '@payloadcms/db-d1-sqlite'
+import { lexicalEditor } from '@payloadcms/richtext-lexical'
 import { buildConfig } from 'payload'
 import { fileURLToPath } from 'url'
+import { CloudflareContext, getCloudflareContext } from '@opennextjs/cloudflare'
 import { GetPlatformProxyOptions } from 'wrangler'
+import { r2Storage } from '@payloadcms/storage-r2'
 
-import { Books } from './collections/Books'
-import { Media } from './collections/Media'
 import { Users } from './collections/Users'
+import { Media } from './collections/Media'
+import { Books } from './collections/Books'
 import { migrations } from './migrations'
 
 const filename = fileURLToPath(import.meta.url)
@@ -19,37 +19,6 @@ const realpath = (value: string) => (fs.existsSync(value) ? fs.realpathSync(valu
 
 const isCLI = process.argv.some((value) => realpath(value).endsWith(path.join('payload', 'bin.js')))
 const isProduction = process.env.NODE_ENV === 'production'
-
-const isBuildPhase =
-  process.env.npm_lifecycle_event === 'build' || process.env.NEXT_PHASE === 'phase-production-build'
-const isLocalNodeEnvironment = isCLI || isBuildPhase || !isProduction
-
-console.log('\n' + '═'.repeat(70))
-console.log('🚀 PAYLOAD 运行环境调试 | ENVIRONMENT RUNTIME DEBUG')
-console.log('═'.repeat(70))
-
-console.table({
-  '1. CLI Mode | 命令行模式': isCLI ? '✅ YES' : '❌ NO',
-  '2. Production | 生产模式': isProduction ? '✅ YES (production)' : '💡 NO (development)',
-  '3. Build Phase | 构建阶段': isBuildPhase ? '🚧 YES (Building...)' : '❌ NO',
-  '4. Local Proxy | 本地代理': isLocalNodeEnvironment ? '🛠️  ENABLED (Local)' : '☁️  DISABLED (Cloud)',
-  '------------------------': '--------------------------------------------------',
-  'npm_lifecycle_event': process.env.npm_lifecycle_event || 'undefined',
-  'NEXT_PHASE': process.env.NEXT_PHASE || 'undefined',
-})
-
-const strategyHeader = isLocalNodeEnvironment 
-  ? '🛠️  [本地/构建策略 | Local/Build Strategy]' 
-  : '☁️  [云端运行策略 | Cloudflare Runtime Strategy]'
-
-const strategyAction = isLocalNodeEnvironment 
-  ? 'Connecting to local .wrangler D1/R2 | 连接本地模拟数据库与存储' 
-  : 'Connecting to Cloudflare Production D1/R2 | 连接云端生产环境数据库与存储'
-
-console.log(`Current Strategy: ${strategyHeader}`)
-console.log(`Action: ${strategyAction}`)
-console.log('═'.repeat(70) + '\n')
-
 
 const createLog =
   (level: string, fn: typeof console.log) => (objOrMsg: object | string, msg?: string) => {
@@ -69,11 +38,12 @@ const cloudflareLogger = {
   error: createLog('error', console.error),
   fatal: createLog('fatal', console.error),
   silent: () => {},
-} as any
+} as any // Use PayloadLogger type when it's exported
 
-const cloudflare = isLocalNodeEnvironment
-  ? await getCloudflareContextFromWrangler()
-  : await getCloudflareContext({ async: true })
+const cloudflare =
+  isCLI || !isProduction
+    ? await getCloudflareContextFromWrangler()
+    : await getCloudflareContext({ async: true })
 
 export default buildConfig({
   admin: {
@@ -115,12 +85,11 @@ async function getCloudflareContextFromWrangler(): Promise<CloudflareContext> {
     /* webpackIgnore: true */ `${'__wrangler'.replaceAll('_', '')}`
   )
   console.info('Getting Cloudflare context from Wrangler bindings', {
-    environment: process.env.CLOUDFLARE_ENV || 'dev',
-    remoteBindings: false,
+    environment: process.env.CLOUDFLARE_ENV,
+    remoteBindings: isProduction,
   })
-
   return getPlatformProxy({
     environment: process.env.CLOUDFLARE_ENV,
-    remoteBindings: false,
+    remoteBindings: isProduction,
   } satisfies GetPlatformProxyOptions)
 }
